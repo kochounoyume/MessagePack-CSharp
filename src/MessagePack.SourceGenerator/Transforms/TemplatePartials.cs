@@ -83,25 +83,6 @@ public partial class EnumTemplate : IFormatterTemplate
     public string FileName => $"{this.Info.FileNameHint}.g.cs";
 }
 
-public partial class UnionTemplate : IFormatterTemplate
-{
-    public UnionTemplate(AnalyzerOptions options, UnionSerializationInfo info)
-    {
-        this.Options = options;
-        this.Info = info;
-    }
-
-    public AnalyzerOptions Options { get; }
-
-    public QualifiedNamedTypeName ResolverName => this.Options.Generator.Resolver.Name;
-
-    public UnionSerializationInfo Info { get; }
-
-    ResolverRegisterInfo IFormatterTemplate.Info => this.Info;
-
-    public string FileName => $"{this.Info.FileNameHint}.g.cs";
-}
-
 public partial class CompositeResolverTemplate : IFormatterTemplate
 {
     public string FileName => $"{this.ResolverName.Name}.g.cs";

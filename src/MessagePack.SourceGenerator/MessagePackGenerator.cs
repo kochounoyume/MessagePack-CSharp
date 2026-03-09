@@ -21,15 +21,7 @@ public partial class MessagePackGenerator : IIncrementalGenerator
             predicate: static (node, _) => node is TypeDeclarationSyntax,
             transform: static (context, _) => (ITypeSymbol)context.TargetSymbol);
 
-        var unionTypes = context.SyntaxProvider.ForAttributeWithMetadataName(
-            $"{AttributeNamespace}.{MessagePackUnionAttributeName}",
-            predicate: static (node, _) => node is InterfaceDeclarationSyntax,
-            transform: static (context, _) => (ITypeSymbol)context.TargetSymbol);
-
-        var combined =
-            messagePackObjectTypes.Collect().Combine(unionTypes.Collect());
-
-        var source = combined
+        var source = messagePackObjectTypes.Collect()
             .Combine(context.CompilationProvider)
             .Combine(options)
             .Select(static (s, ct) =>
@@ -50,12 +42,7 @@ public partial class MessagePackGenerator : IIncrementalGenerator
                     }
                 }
 
-                foreach (var typeSymbol in s.Left.Left.Left)
-                {
-                    Collect(typeSymbol);
-                }
-
-                foreach (var typeSymbol in s.Left.Left.Right)
+                foreach (var typeSymbol in s.Left.Left)
                 {
                     Collect(typeSymbol);
                 }
@@ -92,7 +79,6 @@ public partial class MessagePackGenerator : IIncrementalGenerator
                 models.AddRange(s.ArrayFormatterInfos.Select(i => FullModel.Empty with { Options = s.Options, ArrayFormatterInfos = ImmutableSortedSet.Create(i) }));
                 models.AddRange(s.ObjectInfos.Select(i => FullModel.Empty with { Options = s.Options, ObjectInfos = ImmutableSortedSet.Create(i) }));
                 models.AddRange(s.EnumInfos.Select(i => FullModel.Empty with { Options = s.Options, EnumInfos = ImmutableSortedSet.Create(i) }));
-                models.AddRange(s.UnionInfos.Select(i => FullModel.Empty with { Options = s.Options, UnionInfos = ImmutableSortedSet.Create(i) }));
 
                 return models.ToImmutableArray();
             });

@@ -234,7 +234,6 @@ public class TypeCollector
     private readonly ImmutableSortedSet<ObjectSerializationInfo>.Builder collectedObjectInfo = ImmutableSortedSet.CreateBuilder<ObjectSerializationInfo>(ResolverRegisterInfoComparer.Default);
     private readonly ImmutableSortedSet<EnumSerializationInfo>.Builder collectedEnumInfo = ImmutableSortedSet.CreateBuilder<EnumSerializationInfo>(ResolverRegisterInfoComparer.Default);
     private readonly ImmutableSortedSet<GenericSerializationInfo>.Builder collectedGenericInfo = ImmutableSortedSet.CreateBuilder<GenericSerializationInfo>(ResolverRegisterInfoComparer.Default);
-    private readonly ImmutableSortedSet<UnionSerializationInfo>.Builder collectedUnionInfo = ImmutableSortedSet.CreateBuilder<UnionSerializationInfo>(ResolverRegisterInfoComparer.Default);
     private readonly ImmutableSortedSet<ResolverRegisterInfo>.Builder collectedArrayInfo = ImmutableSortedSet.CreateBuilder<ResolverRegisterInfo>(ResolverRegisterInfoComparer.Default);
 
     private readonly Compilation compilation;
@@ -258,9 +257,7 @@ public class TypeCollector
 
         if (!isInaccessible)
         {
-            if (((targetType.TypeKind == TypeKind.Interface) && targetType.GetAttributes().Any(x2 => x2.AttributeClass.ApproximatelyEqual(this.typeReferences.UnionAttribute)))
-                || ((targetType.TypeKind == TypeKind.Class && targetType.IsAbstract) && targetType.GetAttributes().Any(x2 => x2.AttributeClass.ApproximatelyEqual(this.typeReferences.UnionAttribute)))
-                || ((targetType.TypeKind == TypeKind.Class) && targetType.GetAttributes().Any(x2 => x2.AttributeClass.ApproximatelyEqual(this.typeReferences.MessagePackObjectAttribute)))
+            if (((targetType.TypeKind == TypeKind.Class) && targetType.GetAttributes().Any(x2 => x2.AttributeClass.ApproximatelyEqual(this.typeReferences.MessagePackObjectAttribute)))
                 || ((targetType.TypeKind == TypeKind.Struct) && targetType.GetAttributes().Any(x2 => x2.AttributeClass.ApproximatelyEqual(this.typeReferences.MessagePackObjectAttribute))))
             {
                 this.targetType = targetType;
@@ -286,7 +283,6 @@ public class TypeCollector
         this.collectedObjectInfo.Clear();
         this.collectedEnumInfo.Clear();
         this.collectedGenericInfo.Clear();
-        this.collectedUnionInfo.Clear();
         this.collectedArrayInfo.Clear();
     }
 
@@ -304,7 +300,6 @@ public class TypeCollector
             this.collectedObjectInfo.ToImmutable(),
             this.collectedEnumInfo.ToImmutable(),
             this.collectedGenericInfo.ToImmutable(),
-            this.collectedUnionInfo.ToImmutable(),
             ImmutableSortedSet<CustomFormatterRegisterInfo>.Empty,
             this.collectedArrayInfo.ToImmutable(),
             this.options);
@@ -379,7 +374,6 @@ public class TypeCollector
 
         if (type.TypeKind == TypeKind.Interface || (type.TypeKind == TypeKind.Class && type.IsAbstract))
         {
-            this.CollectUnion(type);
             return;
         }
 
@@ -389,65 +383,6 @@ public class TypeCollector
     private void CollectEnum(INamedTypeSymbol type, ISymbol enumUnderlyingType)
     {
         this.collectedEnumInfo.Add(EnumSerializationInfo.Create(type, enumUnderlyingType, this.options.Generator.Resolver));
-    }
-
-    private void CollectUnion(INamedTypeSymbol type)
-    {
-        ImmutableArray<TypedConstant>[] unionAttrs = type.GetAttributes().Where(x => x.AttributeClass.ApproximatelyEqual(this.typeReferences.UnionAttribute)).Select(x => x.ConstructorArguments).ToArray();
-        if (unionAttrs.Length == 0)
-        {
-            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.UnionAttributeRequired, type.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()));
-            return;
-        }
-
-        // 0, Int  1, SubType
-        UnionSubTypeInfo? UnionSubTypeInfoSelector(ImmutableArray<TypedConstant> x)
-        {
-            if (!(x[0] is { Value: int key }) || !(x[1] is { Value: ITypeSymbol typeSymbol }))
-            {
-                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.AotUnionAttributeRequiresTypeArg, GetIdentifierLocation(type)));
-                return null;
-            }
-
-            CollectCore(typeSymbol);
-
-            var typeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            return new UnionSubTypeInfo(key, typeName);
-        }
-
-        var subTypes = unionAttrs.Select(UnionSubTypeInfoSelector).Where(i => i is not null).OrderBy(x => x!.Key).ToImmutableArray();
-
-        if (!options.IsGeneratingSource)
-        {
-            return;
-        }
-
-        var info = UnionSerializationInfo.Create(
-            type,
-            subTypes!,
-            this.options.Generator.Resolver);
-
-        this.collectedUnionInfo.Add(info);
-    }
-
-    private void CollectGenericUnion(INamedTypeSymbol type)
-    {
-        var unionAttrs = type.GetAttributes().Where(x => x.AttributeClass.ApproximatelyEqual(this.typeReferences.UnionAttribute)).Select(x => x.ConstructorArguments);
-        using var enumerator = unionAttrs.GetEnumerator();
-        if (!enumerator.MoveNext())
-        {
-            return;
-        }
-
-        do
-        {
-            var x = enumerator.Current;
-            if (x[1] is { Value: INamedTypeSymbol unionType } && !this.alreadyCollected.Contains(unionType))
-            {
-                this.CollectCore(unionType);
-            }
-        }
-        while (enumerator.MoveNext());
     }
 
     private void CollectArray(IArrayTypeSymbol array, ISymbol? callerSymbol)
@@ -650,7 +585,6 @@ public class TypeCollector
         // Generic types
         if (type.IsDefinition)
         {
-            this.CollectGenericUnion(type);
             this.CollectObject(type, callerSymbol);
         }
         else
