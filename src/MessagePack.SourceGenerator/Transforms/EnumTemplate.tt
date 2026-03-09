@@ -11,11 +11,6 @@ using MsgPack = global::MessagePack;
 		{
 			writer.Write((<#= Info.UnderlyingTypeKeyword #>)value);
 		}
-
-		public <#= Info.DataType.GetQualifiedName() #> Deserialize(ref MsgPack::MessagePackReader reader, MsgPack::MessagePackSerializerOptions options)
-		{
-			return (<#= Info.DataType.GetQualifiedName() #>)reader.Read<#= Info.UnderlyingTypeName #>();
-		}
 	}
 
 <# } #>

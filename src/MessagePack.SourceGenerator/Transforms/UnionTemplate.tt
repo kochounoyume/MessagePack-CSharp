@@ -10,7 +10,6 @@ using MsgPack = global::MessagePack;
 	internal sealed class <#= Info.Formatter.GetQualifiedName(Qualifiers.None) #>: MsgPack::Formatters.IMessagePackFormatter<<#= Info.DataType.GetQualifiedName() #>>
 	{
 		private readonly global::System.Collections.Generic.Dictionary<global::System.RuntimeTypeHandle, global::System.Collections.Generic.KeyValuePair<int, int>> typeToKeyAndJumpMap;
-		private readonly global::System.Collections.Generic.Dictionary<int, int> keyToJumpMap;
 
 		public <#= Info.Formatter.Name #>()
 		{
@@ -18,12 +17,6 @@ using MsgPack = global::MessagePack;
 			{
 <# for(var i = 0; i < Info.SubTypes.Length; i++) { var item = Info.SubTypes[i]; #>
 				{ typeof(<#= item.Type #>).TypeHandle, new global::System.Collections.Generic.KeyValuePair<int, int>(<#= item.Key #>, <#= i #>) },
-<# } #>
-			};
-			this.keyToJumpMap = new global::System.Collections.Generic.Dictionary<int, int>(<#= Info.SubTypes.Length #>)
-			{
-<# for(var i = 0; i < Info.SubTypes.Length; i++) { var item = Info.SubTypes[i]; #>
-				{ <#= item.Key #>, <#= i #> },
 <# } #>
 			};
 		}
@@ -50,43 +43,6 @@ using MsgPack = global::MessagePack;
 			}
 
 			writer.WriteNil();
-		}
-
-		public <#= Info.DataType.GetQualifiedName() #> Deserialize(ref MsgPack::MessagePackReader reader, MsgPack::MessagePackSerializerOptions options)
-		{
-			if (reader.TryReadNil())
-			{
-				return null;
-			}
-
-			if (reader.ReadArrayHeader() != 2)
-			{
-				throw new global::System.InvalidOperationException("Invalid Union data was detected. Type:<#= Info.DataType.GetQualifiedName() #>");
-			}
-
-			options.Security.DepthStep(ref reader);
-			var key = reader.ReadInt32();
-
-			if (!this.keyToJumpMap.TryGetValue(key, out key))
-			{
-				key = -1;
-			}
-
-			<#= Info.DataType.GetQualifiedName() #> result = null;
-			switch (key)
-			{
-<# for(var i = 0; i < Info.SubTypes.Length; i++) { var item = Info.SubTypes[i]; #>
-				case <#= i #>:
-					result = (<#= Info.DataType.GetQualifiedName() #>)MsgPack::FormatterResolverExtensions.GetFormatterWithVerify<<#= item.Type #>>(options.Resolver).Deserialize(ref reader, options);
-					break;
-<# } #>
-				default:
-					reader.Skip();
-					break;
-			}
-
-			reader.Depth--;
-			return result;
 		}
 	}
 

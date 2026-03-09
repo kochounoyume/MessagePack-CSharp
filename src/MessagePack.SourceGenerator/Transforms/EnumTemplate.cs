@@ -32,14 +32,7 @@ namespace MessagePack.SourceGenerator.Transforms
             this.Write(this.ToStringHelper.ToStringWithCulture(Info.DataType.GetQualifiedName()));
             this.Write(" value, MsgPack::MessagePackSerializerOptions options)\r\n\t\t{\r\n\t\t\twriter.Write((");
             this.Write(this.ToStringHelper.ToStringWithCulture(Info.UnderlyingTypeKeyword));
-            this.Write(")value);\r\n\t\t}\r\n\r\n\t\tpublic ");
-            this.Write(this.ToStringHelper.ToStringWithCulture(Info.DataType.GetQualifiedName()));
-            this.Write(" Deserialize(ref MsgPack::MessagePackReader reader, MsgPack::MessagePackSerialize" +
-                    "rOptions options)\r\n\t\t{\r\n\t\t\treturn (");
-            this.Write(this.ToStringHelper.ToStringWithCulture(Info.DataType.GetQualifiedName()));
-            this.Write(")reader.Read");
-            this.Write(this.ToStringHelper.ToStringWithCulture(Info.UnderlyingTypeName));
-            this.Write("();\r\n\t\t}\r\n\t}\r\n\r\n");
+            this.Write(")value);\r\n\t\t}\r\n\t}\r\n\r\n");
  } 
             return this.GenerationEnvironment.ToString();
         }

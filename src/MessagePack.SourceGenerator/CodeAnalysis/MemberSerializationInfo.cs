@@ -47,28 +47,5 @@ public record MemberSerializationInfo(
         }
     }
 
-    public string GetDeserializeMethodString()
-    {
-        if (CustomFormatter is not null)
-        {
-            return $"this.__{this.Name}CustomFormatter__.Deserialize(ref reader, options)";
-        }
-        else if (PrimitiveTypes.Contains(this.Type))
-        {
-            if (this.Type == "byte[]")
-            {
-                return "MsgPack::Internal.CodeGenHelpers.GetArrayFromNullableSequence(reader.ReadBytes())";
-            }
-            else
-            {
-                return $"reader.Read{this.ShortTypeName!.Replace("[]", "s")}()";
-            }
-        }
-        else
-        {
-            return $"MsgPack::FormatterResolverExtensions.GetFormatterWithVerify<{this.Type}>(formatterResolver).Deserialize(ref reader, options)";
-        }
-    }
-
     public string GetMemberAccess(string targetObject) => this.DeclaringType is null ? $"{targetObject}.{this.Name}" : $"(({this.DeclaringType.GetQualifiedName()}){targetObject}).{this.Name}";
 }
