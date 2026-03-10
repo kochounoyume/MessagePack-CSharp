@@ -221,12 +221,6 @@ public class TypeCollector
     private readonly AnalyzerOptions options;
     private readonly ReferenceSymbols typeReferences;
 
-    /// <summary>
-    /// The means of reporting diagnostics to the analyzer.
-    /// This will be <see langword="null" /> when running in the context of a source generator so as to avoid duplicate diagnostics.
-    /// </summary>
-    private readonly Action<Diagnostic>? reportDiagnostic;
-
     private readonly ITypeSymbol? targetType;
 
     // visitor workspace:
@@ -240,10 +234,9 @@ public class TypeCollector
 
     private readonly CancellationToken cancellationToken;
 
-    private TypeCollector(Compilation compilation, AnalyzerOptions options, ReferenceSymbols referenceSymbols, ITypeSymbol targetType, Action<Diagnostic>? reportAnalyzerDiagnostic, CancellationToken cancellationToken)
+    private TypeCollector(Compilation compilation, AnalyzerOptions options, ReferenceSymbols referenceSymbols, ITypeSymbol targetType, CancellationToken cancellationToken)
     {
         this.typeReferences = referenceSymbols;
-        this.reportDiagnostic = reportAnalyzerDiagnostic;
         this.options = options;
         this.compilation = compilation;
         this.cancellationToken = cancellationToken;
@@ -252,7 +245,6 @@ public class TypeCollector
         foreach (BaseTypeDeclarationSyntax? decl in CodeAnalysisUtilities.FindInaccessibleTypes(targetType))
         {
             isInaccessible = true;
-            reportAnalyzerDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.InaccessibleDataType, decl.Identifier.GetLocation()));
         }
 
         if (!isInaccessible)
@@ -265,9 +257,9 @@ public class TypeCollector
         }
     }
 
-    public static FullModel? Collect(Compilation compilation, AnalyzerOptions options, ReferenceSymbols referenceSymbols, Action<Diagnostic>? reportAnalyzerDiagnostic, ITypeSymbol targetType, CancellationToken cancellationToken)
+    public static FullModel? Collect(Compilation compilation, AnalyzerOptions options, ReferenceSymbols referenceSymbols, ITypeSymbol targetType, CancellationToken cancellationToken)
     {
-        TypeCollector collector = new(compilation, options, referenceSymbols, targetType, reportAnalyzerDiagnostic, cancellationToken);
+        TypeCollector collector = new(compilation, options, referenceSymbols, targetType, cancellationToken);
         if (collector.targetType is null)
         {
             return null;
@@ -634,9 +626,6 @@ public class TypeCollector
             bool isMessagePackFormatter = formatterType.AllInterfaces.Any(x => SymbolEqualityComparer.Default.Equals(x, this.typeReferences.MessagePackFormatter));
             if (!isMessagePackFormatter)
             {
-                Location? location = ((AttributeSyntax?)formatterAttribute.ApplicationSyntaxReference?.GetSyntax())?.ArgumentList?.Arguments[0].GetLocation();
-                ImmutableDictionary<string, string?> typeInfo = ImmutableDictionary.Create<string, string?>().Add("type", formatterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.MessageFormatterMustBeMessagePackFormatter, location, typeInfo));
             }
         }
     }
@@ -664,12 +653,6 @@ public class TypeCollector
 
         if (contractAttr is null)
         {
-            if (this.reportDiagnostic != null)
-            {
-                var diagnostics = Diagnostic.Create(MsgPack00xMessagePackAnalyzer.TypeMustBeMessagePackObject, ((BaseTypeDeclarationSyntax)formattedType.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-                this.reportDiagnostic.Invoke(diagnostics);
-            }
-
             return null;
         }
 
@@ -685,8 +668,6 @@ public class TypeCollector
         // But once it's clear that the developer is serializing non-public members,
         // we need to raise the bar for all non-public members.
         bool nonPublicMembersAreSerialized = false;
-        List<Diagnostic> deferredDiagnosticsForNonPublicMembers = new();
-
         FormatterDescriptor? GetSpecialFormatter(ISymbol member)
         {
             INamedTypeSymbol? name = member.GetAttributes().FirstOrDefault(x => x.AttributeClass.ApproximatelyEqual(this.typeReferences.FormatterAttribute))?.ConstructorArguments[0].Value as INamedTypeSymbol;
@@ -706,7 +687,6 @@ public class TypeCollector
             return null;
         }
 
-        HashSet<Diagnostic> reportedDiagnostics = new();
         IEnumerable<ISymbol> instanceMembers = formattedType.GetAllMembers()
             .Where(m => m is IFieldSymbol or IPropertySymbol && !(m.IsStatic || m.IsOverride || m.IsImplicitlyDeclared));
 
@@ -744,7 +724,6 @@ public class TypeCollector
                         _ => null,
                     };
 
-                    reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.CollidingMemberNamesInForceMapMode, location));
                 }
 
                 claimedKeys[stringKey] = item;
@@ -876,53 +855,7 @@ public class TypeCollector
                         // since we cannot know what the key is using only C# syntax and the semantic model.
                         SyntaxReference? derivedKeyAttribute = item.GetAttributes().FirstOrDefault(att => att.AttributeClass.IsApproximatelyEqualOrDerivedFrom(this.typeReferences.KeyAttribute) == RoslynAnalyzerExtensions.EqualityMatch.LeftDerivesFromRight)?.ApplicationSyntaxReference;
 
-                        if (derivedKeyAttribute is null || suppressSourceGeneration is not true)
-                        {
-                            if (SymbolEqualityComparer.Default.Equals(item.ContainingType, formattedType))
-                            {
-                                var syntax = item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
-                                var identifier = (syntax as PropertyDeclarationSyntax)?.Identifier ?? (syntax as ParameterSyntax)?.Identifier;
 
-                                Diagnostic diagnostic = derivedKeyAttribute is not null && suppressSourceGeneration is not true
-                                    ? Diagnostic.Create(MsgPack00xMessagePackAnalyzer.AOTDerivedKeyAttribute, derivedKeyAttribute.GetSyntax(this.cancellationToken).GetLocation())
-                                    : Diagnostic.Create(MsgPack00xMessagePackAnalyzer.MemberNeedsKey, identifier?.GetLocation(), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name);
-                                if (nonPublicMembersAreSerialized || (item.DeclaredAccessibility & Accessibility.Public) == Accessibility.Public)
-                                {
-                                    this.reportDiagnostic?.Invoke(diagnostic);
-                                }
-                                else
-                                {
-                                    deferredDiagnosticsForNonPublicMembers.Add(diagnostic);
-                                }
-                            }
-                            else if (formattedType.BaseType is not null)
-                            {
-                                // The member was inherited, so we raise a special error at the location of the base type reference.
-                                BaseTypeSyntax? baseSyntax = formattedType.DeclaringSyntaxReferences.SelectMany(sr => (IEnumerable<BaseTypeSyntax>?)((BaseTypeDeclarationSyntax)sr.GetSyntax()).BaseList?.Types ?? Array.Empty<BaseTypeSyntax>())
-                                    .FirstOrDefault(bt => SymbolEqualityComparer.Default.Equals(this.compilation.GetSemanticModel(bt.SyntaxTree).GetTypeInfo(bt.Type).Type, item.ContainingType));
-                                if (baseSyntax is not null)
-                                {
-                                    Diagnostic diagnostic = derivedKeyAttribute is not null && suppressSourceGeneration is not true
-                                        ? Diagnostic.Create(MsgPack00xMessagePackAnalyzer.AOTDerivedKeyAttribute, baseSyntax.GetLocation())
-                                        : Diagnostic.Create(
-                                            MsgPack00xMessagePackAnalyzer.BaseTypeContainsUnattributedPublicMembers,
-                                            baseSyntax.GetLocation(),
-                                            item.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                            item.Name);
-                                    if (reportedDiagnostics.Add(diagnostic))
-                                    {
-                                        if (nonPublicMembersAreSerialized || (item.DeclaredAccessibility & Accessibility.Public) == Accessibility.Public)
-                                        {
-                                            this.reportDiagnostic?.Invoke(diagnostic);
-                                        }
-                                        else
-                                        {
-                                            deferredDiagnosticsForNonPublicMembers.Add(diagnostic);
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
                 else
@@ -938,18 +871,12 @@ public class TypeCollector
 
                     var intKey = key is { Value: int intKeyValue } ? intKeyValue : default(int?);
                     var stringKey = key is { Value: string stringKeyValue } ? stringKeyValue : default;
-                    if (intKey == null && stringKey == null)
-                    {
-                        this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name));
-                    }
-
                     // A property with an init accessor and an initializer has a default that will be discarded by the deserializer.
                     if (suppressSourceGeneration is not true && isInitOnly)
                     {
                         EqualsValueClauseSyntax? initializer = item.DeclaringSyntaxReferences.Select(s => (s.GetSyntax(this.cancellationToken) as PropertyDeclarationSyntax)?.Initializer).FirstOrDefault(i => i is not null);
                         if (initializer is not null)
                         {
-                            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.AOTInitProperty, initializer.GetLocation()));
                         }
                     }
 
@@ -962,7 +889,6 @@ public class TypeCollector
                     {
                         if ((isIntKey && intKey == null) || (!isIntKey && stringKey == null))
                         {
-                            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.DoNotMixStringAndIntKeys, item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()));
                         }
                     }
 
@@ -970,7 +896,6 @@ public class TypeCollector
                     {
                         if (intMembers.ContainsKey(intKey!.Value))
                         {
-                            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.KeysMustBeUnique, item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()));
                         }
 
                         var member = new MemberSerializationInfo(true, isWritable, isReadable, isInitOnly, item.IsRequired, intKey!.Value, item.Name, item.Name, item.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Type.ToDisplayString(BinaryWriteFormat), specialFormatter)
@@ -983,7 +908,6 @@ public class TypeCollector
                     {
                         if (stringMembers.ContainsKey(stringKey!))
                         {
-                            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.KeysMustBeUnique, item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()));
                         }
 
                         var member = new MemberSerializationInfo(true, isWritable, isReadable, isInitOnly, item.IsRequired, hiddenIntKey++, stringKey!, item.Name, item.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Type.ToDisplayString(BinaryWriteFormat), specialFormatter)
@@ -1026,50 +950,7 @@ public class TypeCollector
                         // since we cannot know what the key is using only C# syntax and the semantic model.
                         SyntaxReference? derivedKeyAttribute = item.GetAttributes().FirstOrDefault(att => att.AttributeClass.IsApproximatelyEqualOrDerivedFrom(this.typeReferences.KeyAttribute) == RoslynAnalyzerExtensions.EqualityMatch.LeftDerivesFromRight)?.ApplicationSyntaxReference;
 
-                        if (derivedKeyAttribute is null || suppressSourceGeneration is not true)
-                        {
-                            if (SymbolEqualityComparer.Default.Equals(item.ContainingType, formattedType))
-                            {
-                                Diagnostic diagnostic = derivedKeyAttribute is not null && suppressSourceGeneration is not true
-                                    ? Diagnostic.Create(MsgPack00xMessagePackAnalyzer.AOTDerivedKeyAttribute, derivedKeyAttribute.GetSyntax(this.cancellationToken).GetLocation())
-                                    : Diagnostic.Create(MsgPack00xMessagePackAnalyzer.MemberNeedsKey, item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation(), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name);
-                                if (nonPublicMembersAreSerialized || (item.DeclaredAccessibility & Accessibility.Public) == Accessibility.Public)
-                                {
-                                    this.reportDiagnostic?.Invoke(diagnostic);
-                                }
-                                else
-                                {
-                                    deferredDiagnosticsForNonPublicMembers.Add(diagnostic);
-                                }
-                            }
-                            else if (formattedType.BaseType is not null)
-                            {
-                                // The member was inherited, so we raise a special error at the location of the base type reference.
-                                BaseTypeSyntax? baseSyntax = formattedType.DeclaringSyntaxReferences.SelectMany(sr => (IEnumerable<BaseTypeSyntax>?)((BaseTypeDeclarationSyntax)sr.GetSyntax()).BaseList?.Types ?? Array.Empty<BaseTypeSyntax>())
-                                    .FirstOrDefault(bt => SymbolEqualityComparer.Default.Equals(this.compilation.GetSemanticModel(bt.SyntaxTree).GetTypeInfo(bt.Type).Type, item.ContainingType));
-                                if (baseSyntax is not null)
-                                {
-                                    Diagnostic diagnostic = derivedKeyAttribute is not null && suppressSourceGeneration is not true
-                                        ? Diagnostic.Create(MsgPack00xMessagePackAnalyzer.AOTDerivedKeyAttribute, baseSyntax.GetLocation())
-                                        : Diagnostic.Create(
-                                            MsgPack00xMessagePackAnalyzer.BaseTypeContainsUnattributedPublicMembers,
-                                            baseSyntax.GetLocation(),
-                                            item.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                                            item.Name);
-                                    if (reportedDiagnostics.Add(diagnostic))
-                                    {
-                                        if (nonPublicMembersAreSerialized || (item.DeclaredAccessibility & Accessibility.Public) == Accessibility.Public)
-                                        {
-                                            this.reportDiagnostic?.Invoke(diagnostic);
-                                        }
-                                        else
-                                        {
-                                            deferredDiagnosticsForNonPublicMembers.Add(diagnostic);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+
                     }
                 }
                 else
@@ -1081,11 +962,6 @@ public class TypeCollector
 
                     var intKey = key is { Value: int intKeyValue } ? intKeyValue : default(int?);
                     var stringKey = key is { Value: string stringKeyValue } ? stringKeyValue : default;
-                    if (intKey == null && stringKey == null)
-                    {
-                        this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()));
-                    }
-
                     if (searchFirst)
                     {
                         searchFirst = false;
@@ -1095,7 +971,6 @@ public class TypeCollector
                     {
                         if ((isIntKey && intKey == null) || (!isIntKey && stringKey == null))
                         {
-                            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.DoNotMixStringAndIntKeys, item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()));
                         }
                     }
 
@@ -1103,7 +978,6 @@ public class TypeCollector
                     {
                         if (intMembers.ContainsKey(intKey!.Value))
                         {
-                            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.KeysMustBeUnique, item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()));
                         }
 
                         var member = new MemberSerializationInfo(true, IsWritable: !item.IsReadOnly, IsReadable: true, IsInitOnly: false, item.IsRequired, intKey!.Value, item.Name, item.Name, item.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Type.ToDisplayString(BinaryWriteFormat), specialFormatter)
@@ -1116,7 +990,6 @@ public class TypeCollector
                     {
                         if (stringMembers.ContainsKey(stringKey!))
                         {
-                            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.KeysMustBeUnique, item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()));
                         }
 
                         var member = new MemberSerializationInfo(true, IsWritable: !item.IsReadOnly, IsReadable: true, IsInitOnly: false, item.IsRequired, hiddenIntKey++, stringKey!, item.Name, item.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Type.ToDisplayString(BinaryWriteFormat), specialFormatter)
@@ -1134,16 +1007,6 @@ public class TypeCollector
                         this.CollectCore(item.Type, item);
                     }
                 }
-            }
-        }
-
-        // If we discovered midway through that we should be reporting diagnostics for non-public members,
-        // report the ones we missed along the way.
-        if ((nonPublicMembersAreSerialized || allowPrivateAttribute is true) && this.reportDiagnostic is not null)
-        {
-            foreach (Diagnostic deferred in deferredDiagnosticsForNonPublicMembers)
-            {
-                this.reportDiagnostic(deferred);
             }
         }
 
@@ -1166,7 +1029,6 @@ public class TypeCollector
         // struct allows null ctor
         if (ctor is null && isClass)
         {
-            this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.NoDeserializingConstructor, GetIdentifierLocation(formattedType)));
             return null;
         }
 
@@ -1202,7 +1064,6 @@ public class TypeCollector
                                 }
                                 else
                                 {
-                                    this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.DeserializingConstructorParameterTypeMismatch, GetLocation(item)));
                                     return null;
                                 }
                             }
@@ -1216,7 +1077,6 @@ public class TypeCollector
                             }
                             else
                             {
-                                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.DeserializingConstructorParameterIndexMissing, GetParameterListLocation(ctor)));
                                 return null;
                             }
                         }
@@ -1231,7 +1091,6 @@ public class TypeCollector
                         {
                             if (ctorEnumerator == null)
                             {
-                                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.DeserializingConstructorParameterNameMissing, GetParameterListLocation(ctor)));
                                 return null;
                             }
 
@@ -1246,7 +1105,6 @@ public class TypeCollector
                         {
                             if (ctorEnumerator == null)
                             {
-                                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.DeserializingConstructorParameterNameDuplicate, GetLocation(item)));
                                 return null;
                             }
 
@@ -1263,7 +1121,6 @@ public class TypeCollector
                         {
                             if (ctorEnumerator == null)
                             {
-                                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.DeserializingConstructorParameterTypeMismatch, GetLocation(item)));
                                 return null;
                             }
 
@@ -1279,7 +1136,6 @@ public class TypeCollector
 
             if (ctor == null)
             {
-                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.NoDeserializingConstructor, GetIdentifierLocation(formattedType)));
             }
         }
 
@@ -1300,7 +1156,6 @@ public class TypeCollector
                 var targetName = callerSymbol is not null ? callerSymbol.ContainingType.Name + "." + callerSymbol.Name : formattedType.Name;
 
                 ImmutableDictionary<string, string?> typeInfo = ImmutableDictionary.Create<string, string?>().Add("type", formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.TypeMustBeMessagePackObject, location, typeInfo, targetName));
             }
 
             // Indicate to our caller that we don't have a valid object.
@@ -1319,7 +1174,7 @@ public class TypeCollector
                     location = attSyntax.ArgumentList?.Arguments.First(a => a.NameEquals?.Name.Identifier.ValueText == Constants.AllowPrivatePropertyName)?.Expression.GetLocation() ?? location;
                 }
 
-                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.MessagePackObjectAllowPrivateRequired, location));
+
             }
         }
 
@@ -1341,7 +1196,7 @@ public class TypeCollector
                 BaseTypeDeclarationSyntax? targetType = formattedType.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as BaseTypeDeclarationSyntax;
                 Location? primaryLocation = targetType?.Identifier.GetLocation();
                 Location[]? addlLocations = nonPartialTypes.Where(t => t != targetType).Select(t => t.Identifier.GetLocation()).ToArray();
-                this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.PartialTypeRequired, primaryLocation, (IEnumerable<Location>?)addlLocations));
+
                 anyNonPartialTypesFound = true;
             }
 
