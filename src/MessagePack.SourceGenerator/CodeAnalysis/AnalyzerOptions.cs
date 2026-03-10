@@ -242,10 +242,9 @@ public record FormatterDescriptor(QualifiedNamedTypeName Name, string? InstanceP
 
         formatter = new FormatterDescriptor(new QualifiedNamedTypeName(type), instanceProvidingMember, instanceTypeName, formattedTypes)
         {
-            InaccessibleDescriptor =
-                CodeAnalysisUtilities.FindInaccessibleTypes(type).Any() ? MsgPack00xMessagePackAnalyzer.InaccessibleFormatterType :
-                instanceProvidingMember is null ? MsgPack00xMessagePackAnalyzer.InaccessibleFormatterInstance :
-                null,
+            IsInaccessible =
+                CodeAnalysisUtilities.FindInaccessibleTypes(type).Any() ||
+                instanceProvidingMember is null,
             ExcludeFromSourceGeneratedResolver =
                 type.GetAttributes().Any(a => a.AttributeClass?.Name == Constants.ExcludeFormatterFromSourceGeneratedResolverAttributeName && a.AttributeClass?.ContainingNamespace.Name == Constants.AttributeNamespace),
         };
@@ -253,7 +252,7 @@ public record FormatterDescriptor(QualifiedNamedTypeName Name, string? InstanceP
         return true;
     }
 
-    public DiagnosticDescriptor? InaccessibleDescriptor { get; init; }
+    public bool IsInaccessible { get; init; }
 
     public bool ExcludeFromSourceGeneratedResolver { get; init; }
 
@@ -268,7 +267,7 @@ public record FormatterDescriptor(QualifiedNamedTypeName Name, string? InstanceP
             && this.InstanceProvidingMember == other.InstanceProvidingMember
             && this.InstanceTypeName.Equals(other.InstanceTypeName)
             && this.FormattableTypes.SetEquals(other.FormattableTypes)
-            && this.InaccessibleDescriptor == other.InaccessibleDescriptor
+            && this.IsInaccessible == other.IsInaccessible
             && this.ExcludeFromSourceGeneratedResolver == other.ExcludeFromSourceGeneratedResolver;
     }
 

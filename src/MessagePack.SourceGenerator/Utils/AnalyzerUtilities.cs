@@ -46,8 +46,6 @@ public static class AnalyzerUtilities
 
     public static string GetCanonicalTypeFullName(this ITypeSymbol typeSymbol) => typeSymbol.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-    internal static string GetHelpLink(string diagnosticId) => $"https://github.com/MessagePack-CSharp/MessagePack-CSharp/blob/master/doc/analyzers/{diagnosticId}.md";
-
     internal static AnalyzerOptions? ParseGeneratorAttribute(ImmutableArray<AttributeData> attributes, ISymbol targetSymbol, CancellationToken cancellationToken)
     {
         AttributeData? generatorAttribute = attributes.SingleOrDefault(ad =>

@@ -21,15 +21,7 @@ public partial class MessagePackGenerator : IIncrementalGenerator
             predicate: static (node, _) => node is TypeDeclarationSyntax,
             transform: static (context, _) => (ITypeSymbol)context.TargetSymbol);
 
-        var unionTypes = context.SyntaxProvider.ForAttributeWithMetadataName(
-            $"{AttributeNamespace}.{MessagePackUnionAttributeName}",
-            predicate: static (node, _) => node is InterfaceDeclarationSyntax,
-            transform: static (context, _) => (ITypeSymbol)context.TargetSymbol);
-
-        var combined =
-            messagePackObjectTypes.Collect().Combine(unionTypes.Collect());
-
-        var source = combined
+        var source = messagePackObjectTypes.Collect()
             .Combine(context.CompilationProvider)
             .Combine(options)
             .Select(static (s, ct) =>
@@ -44,18 +36,13 @@ public partial class MessagePackGenerator : IIncrementalGenerator
                 List<FullModel> modelPerType = new();
                 void Collect(ITypeSymbol typeSymbol)
                 {
-                    if (TypeCollector.Collect(s.Left.Right, options, referenceSymbols, reportAnalyzerDiagnostic: null, typeSymbol, ct) is FullModel model)
+                    if (TypeCollector.Collect(s.Left.Right, options, referenceSymbols, typeSymbol, ct) is FullModel model)
                     {
                         modelPerType.Add(model);
                     }
                 }
 
-                foreach (var typeSymbol in s.Left.Left.Left)
-                {
-                    Collect(typeSymbol);
-                }
-
-                foreach (var typeSymbol in s.Left.Left.Right)
+                foreach (var typeSymbol in s.Left.Left)
                 {
                     Collect(typeSymbol);
                 }
@@ -64,7 +51,7 @@ public partial class MessagePackGenerator : IIncrementalGenerator
                 {
                     var customFormatterInfos = FullModel.Empty.CustomFormatterInfos.Union(
                         from known in options.KnownFormatters
-                        where known.InaccessibleDescriptor is null
+                        where !known.IsInaccessible
                         from formatted in known.FormattableTypes
                         where !options.GetCollidingFormatterDataTypes(known.Name).Contains(formatted) // skip formatters with colliding types to avoid non-deterministic code generation
                         select new CustomFormatterRegisterInfo
@@ -92,7 +79,6 @@ public partial class MessagePackGenerator : IIncrementalGenerator
                 models.AddRange(s.ArrayFormatterInfos.Select(i => FullModel.Empty with { Options = s.Options, ArrayFormatterInfos = ImmutableSortedSet.Create(i) }));
                 models.AddRange(s.ObjectInfos.Select(i => FullModel.Empty with { Options = s.Options, ObjectInfos = ImmutableSortedSet.Create(i) }));
                 models.AddRange(s.EnumInfos.Select(i => FullModel.Empty with { Options = s.Options, EnumInfos = ImmutableSortedSet.Create(i) }));
-                models.AddRange(s.UnionInfos.Select(i => FullModel.Empty with { Options = s.Options, UnionInfos = ImmutableSortedSet.Create(i) }));
 
                 return models.ToImmutableArray();
             });
@@ -141,7 +127,5 @@ public partial class MessagePackGenerator : IIncrementalGenerator
         public CancellationToken CancellationToken => context.CancellationToken;
 
         public void AddSource(string hintName, string source) => context.AddSource(hintName, source);
-
-        public void ReportDiagnostic(Diagnostic diagnostic) => context.ReportDiagnostic(diagnostic);
     }
 }

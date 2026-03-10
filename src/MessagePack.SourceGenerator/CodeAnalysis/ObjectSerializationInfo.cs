@@ -1,7 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Text;
 using Microsoft.CodeAnalysis;
 
 namespace MessagePack.SourceGenerator.CodeAnalysis;
@@ -18,8 +17,6 @@ public record ObjectSerializationInfo : ResolverRegisterInfo
     /// Gets the members that are either init-only properties or required (and therefore must appear in an object initializer).
     /// </summary>
     public required MemberSerializationInfo[] InitMembers { get; init; }
-
-    public bool MustDeserializeFieldsFirst => this.ConstructorParameters.Length > 0 || this.InitMembers.Length > 0;
 
     public required bool IsIntKey { get; init; }
 
@@ -92,51 +89,6 @@ public record ObjectSerializationInfo : ResolverRegisterInfo
     public MemberSerializationInfo? GetMember(int index)
     {
         return this.Members.FirstOrDefault(x => x.IntKey == index);
-    }
-
-    public string GetConstructorString()
-    {
-        StringBuilder builder = new();
-        builder.Append(this.DataType.GetQualifiedName(Qualifiers.GlobalNamespace, GenericParameterStyle.Identifiers));
-
-        builder.Append('(');
-
-        for (int i = 0; i < this.ConstructorParameters.Length; i++)
-        {
-            if (i != 0)
-            {
-                builder.Append(", ");
-            }
-
-            builder.Append(this.ConstructorParameters[i].LocalVariableName);
-        }
-
-        builder.Append(')');
-
-        if (this.InitMembers.Length > 0)
-        {
-            builder.Append(" { ");
-
-            for (int i = 0; i < this.InitMembers.Length; i++)
-            {
-                if (i != 0)
-                {
-                    builder.Append(", ");
-                }
-
-                // Strictly speaking, we should only be assigning these init-only properties if values for them
-                // was provided in the deserialized stream.
-                // However the C# language does not provide a means to do this, so we always assign them.
-                // https://github.com/dotnet/csharplang/issues/6117
-                builder.Append(this.InitMembers[i].Name);
-                builder.Append(" = ");
-                builder.Append(this.InitMembers[i].LocalVariableName);
-            }
-
-            builder.Append(" }");
-        }
-
-        return builder.ToString();
     }
 
     public virtual bool Equals(ObjectSerializationInfo? other)

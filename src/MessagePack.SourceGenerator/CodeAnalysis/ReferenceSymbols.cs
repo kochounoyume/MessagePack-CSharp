@@ -8,7 +8,6 @@ namespace MessagePack.SourceGenerator.CodeAnalysis;
 
 public record ReferenceSymbols(
     INamedTypeSymbol MessagePackObjectAttribute,
-    INamedTypeSymbol UnionAttribute,
     INamedTypeSymbol SerializationConstructorAttribute,
     INamedTypeSymbol KeyAttribute,
     INamedTypeSymbol IgnoreAttribute,
@@ -24,12 +23,6 @@ public record ReferenceSymbols(
 
         INamedTypeSymbol? messagePackObjectAttribute = compilation.GetTypeByMetadataName("MessagePack.MessagePackObjectAttribute");
         if (messagePackObjectAttribute is null)
-        {
-            return false;
-        }
-
-        INamedTypeSymbol? unionAttribute = compilation.GetTypeByMetadataName("MessagePack.UnionAttribute");
-        if (unionAttribute is null)
         {
             return false;
         }
@@ -71,7 +64,6 @@ public record ReferenceSymbols(
 
         instance = new ReferenceSymbols(
             messagePackObjectAttribute,
-            unionAttribute,
             serializationConstructor,
             keyAttribute,
             ignoreAttribute,

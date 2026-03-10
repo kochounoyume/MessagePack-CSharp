@@ -34,12 +34,6 @@ public partial class MessagePackGenerator
             AddTransform(transform.TransformText(), transform.FileName);
         }
 
-        foreach (UnionSerializationInfo info in model.UnionInfos)
-        {
-            UnionTemplate transform = new(options, info);
-            AddTransform(transform.TransformText(), transform.FileName);
-        }
-
         foreach (ObjectSerializationInfo info in model.ObjectInfos)
         {
             IFormatterTemplate transform = info.IsStringKey
@@ -72,7 +66,6 @@ public partial class MessagePackGenerator
             .. model.ArrayFormatterInfos,
             .. model.GenericInfos,
             .. model.EnumInfos,
-            .. model.UnionInfos,
             .. model.ObjectInfos,
             .. model.CustomFormatterInfos.Where(fi => fi.FormattableDataType.IsFormatterInSameAssembly),
         ];
