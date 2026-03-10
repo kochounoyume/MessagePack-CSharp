@@ -1,25 +1,14 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <AnalyzerLanguage>cs</AnalyzerLanguage>
     <DebugType>embedded</DebugType>
     <IsPackable>false</IsPackable>
     <IsRoslynComponent>true</IsRoslynComponent>
   </PropertyGroup>
-
-  <ItemGroup>
-    <None Remove="AnalyzerReleases.Shipped.md" />
-    <None Remove="AnalyzerReleases.Unshipped.md" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
-    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
-  </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\MessagePack\Internal\AutomataKeyGen.cs" LinkBase="MessagePack\Internal" />
@@ -50,16 +39,6 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>StringKeyFormatterTemplate.tt</DependentUpon>
     </Compile>
-    <Compile Update="Transforms\TemplatePartials.cs">
-      <DependentUpon>%(FileName).tt</DependentUpon>
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-    </Compile>
-    <Compile Update="Transforms\UnionTemplate.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>UnionTemplate.tt</DependentUpon>
-    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -84,15 +63,10 @@
       <Generator>TextTemplatingFilePreprocessor</Generator>
       <CustomToolNamespace>MessagePack.SourceGenerator.Transforms</CustomToolNamespace>
     </None>
-    <None Update="Transforms\UnionTemplate.tt">
-      <LastGenOutput>UnionTemplate.cs</LastGenOutput>
-      <Generator>TextTemplatingFilePreprocessor</Generator>
-    </None>
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.ResxSourceGenerator" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
